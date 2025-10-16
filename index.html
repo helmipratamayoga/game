@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Game Tembak-Tembakan - Reset Top Score Saat Game Over Saja</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      background: linear-gradient(135deg, #f8ffae 0%, #43c6ac 100%);
+      margin: 0;
+      font-family: 'Montserrat', Arial, sans-serif;
+    }
+    #gameContainer {
+      margin: 40px auto;
+      max-width: 900px;
+      background: rgba(255,255,255,0.7);
+      border-radius: 20px;
+      box-shadow: 0 8px 24px rgba(60,120,120,0.1);
+      padding: 30px;
+      position: relative;
+      text-align: center;
+    }
+    #topScore {
+      font-size: 22px;
+      font-weight: bold;
+      color: #d28d00;
+      text-shadow: 1px 1px 8px #fff, 0 2px 10px #d28d0088;
+      margin-bottom: 6px;
+      letter-spacing: 1px;
+    }
+    #score {
+      font-size: 26px;
+      font-weight: bold;
+      color: #43c6ac;
+      text-shadow: 1px 1px 6px #fff, 0 2px 8px #43c6ac88;
+      margin-bottom: 16px;
+      letter-spacing: 2px;
+    }
+    #info {
+      color: #333;
+      font-size: 18px;
+      margin-top: 10px;
+      opacity: 0.6;
+    }
+    #playBtn, #resetTopBtn {
+      display: inline-block;
+      font-family: 'Montserrat', Arial, sans-serif;
+      font-size: 18px;
+      color: #fff;
+      background: linear-gradient(90deg, #43c6ac 60%, #f8ffae 120%);
+      border: none;
+      border-radius: 14px;
+      padding: 10px 28px;
+      box-shadow: 0 2px 12px #43c6ac44;
+      cursor: pointer;
+      margin: 12px 7px 0 7px;
+      transition: 0.2s;
+    }
+    #playBtn:hover, #resetTopBtn:hover {
+      background: linear-gradient(90deg, #f8ffae 30%, #43c6ac 120%);
+      color: #43c6ac;
+    }
+    #resetTopBtn {
+      display: none; /* default: hidden */
+    }
+    #gameover {
+      display: none;
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 48px;
+      font-weight: bold;
+      color: #ff3c3c;
+      text-shadow: 2px 2px 12px #fff, 0 2px 16px #ff3c3c88;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 2;
+      width: 100%;
+      text-align: center;
+    }
+    .gameover-anim {
+      animation: gameover-anim 1.2s cubic-bezier(.68,-0.55,.27,1.55) forwards;
+    }
+    @keyframes gameover-anim {
+      0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.7);
+      }
+      60% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1.12);
+      }
+      80% {
+        transform: translate(-50%, -50%) scale(0.97);
+      }
+      100% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="gameContainer" style="position:relative;">
+    <div id="topScore">Top Score: 0</div>
+    <div id="score">Score: 0</div>
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+    <div id="gameover">GAME OVER!</div>
+    <div id="info">↑/↓ untuk gerak, Spasi untuk menembak</div>
+    <button id="playBtn">Play</button>
+    <button id="resetTopBtn">Reset Top Score</button>
+  </div>
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const topScoreEl = document.getElementById('topScore');
+    const playBtn = document.getElementById('playBtn');
+    const resetTopBtn = document.getElementById('resetTopBtn');
+    const gameoverEl = document.getElementById('gameover');
+
+    let player, bullets, targets, score, topScore, running, upPressed, downPressed, spacePressed, spawnTimer, started;
+    let lastShoot = 0;
+    const SHOOT_COOLDOWN = 400;
+    const warnaPeluru = "#f7971e";
+
+    function getTopScore() {
+      return parseInt(localStorage.getItem('tembakTopScore')) || 0;
+    }
+
+    function setTopScore(val) {
+      localStorage.setItem('tembakTopScore', val);
+    }
+
+    function updateTopScoreDisplay() {
+      topScoreEl.textContent = "Top Score: " + topScore;
+    }
+
+    function resetTopScore() {
+      setTopScore(0);
+      topScore = 0;
+      updateTopScoreDisplay();
+    }
+
+    function initGame() {
+      player = { x: 60, y: canvas.height/2, r: 30, speed: 7 };
+      bullets = [];
+      targets = [];
+      score = 0;
+      running = true;
+      upPressed = downPressed = spacePressed = false;
+      spawnTimer = 0;
+      lastShoot = 0;
+      topScore = getTopScore();
+      scoreEl.textContent = "Score: 0";
+      updateTopScoreDisplay();
+      gameoverEl.style.display = "none";
+      gameoverEl.style.opacity = "0";
+      gameoverEl.classList.remove("gameover-anim");
+      resetTopBtn.style.display = "none"; // Hide reset button saat main
+    }
+
+    function drawPlayer() {
+      ctx.save();
+      ctx.shadowColor = "#43c6ac";
+      ctx.shadowBlur = 20;
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2);
+      ctx.fillStyle = "#1e3c72";
+      ctx.fill();
+      ctx.restore();
+
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, player.r - 8, 0, Math.PI * 2);
+      ctx.fillStyle = "#39b7dd";
+      ctx.fill();
+
+      ctx.save();
+      ctx.translate(player.x + player.r, player.y - 6);
+      ctx.rotate(-0.08);
+      ctx.fillStyle = "#333";
+      ctx.fillRect(0, 0, 18, 12);
+      ctx.restore();
+    }
+
+    function drawBullets() {
+      bullets.forEach(b => {
+        ctx.save();
+        ctx.shadowColor = warnaPeluru;
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+        ctx.fillStyle = warnaPeluru;
+        ctx.fill();
+        ctx.restore();
+
+        ctx.beginPath();
+        ctx.moveTo(b.x - 12, b.y);
+        ctx.lineTo(b.x - 2, b.y);
+        ctx.strokeStyle = warnaPeluru + "44";
+        ctx.lineWidth = 6;
+        ctx.stroke();
+      });
+    }
+
+    function drawTargets() {
+      targets.forEach(t => {
+        ctx.save();
+        ctx.shadowColor = "#ff6e7f";
+        ctx.shadowBlur = 16;
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
+        ctx.fillStyle = t.color;
+        ctx.fill();
+        ctx.restore();
+
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, t.r-8, 0, Math.PI * 2);
+        ctx.fillStyle = "#fff";
+        ctx.fill();
+      });
+    }
+
+    function drawWaitScreen() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.font = "bold 40px Montserrat, Arial";
+      ctx.fillStyle = "#43c6ac";
+      ctx.textAlign = "center";
+      ctx.fillText("Tekan tombol Play untuk mulai", canvas.width/2, canvas.height/2 + 15);
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawPlayer();
+      drawBullets();
+      drawTargets();
+    }
+
+    function update() {
+      if (!running) return;
+
+      if (upPressed && player.y - player.r > 0) player.y -= player.speed;
+      if (downPressed && player.y + player.r < canvas.height) player.y += player.speed;
+
+      bullets.forEach((b, i) => {
+        b.x += b.speed;
+        if (b.x > canvas.width + 10) bullets.splice(i, 1);
+      });
+
+      targets.forEach((t, i) => {
+        t.x -= t.speed;
+        if (t.x < 0) {
+          running = false;
+          showGameOverAnim();
+        }
+      });
+
+      bullets.forEach((b, bi) => {
+        targets.forEach((t, ti) => {
+          if (Math.hypot(b.x - t.x, b.y - t.y) < b.r + t.r) {
+            bullets.splice(bi, 1);
+            targets.splice(ti, 1);
+            score++;
+            scoreEl.textContent = "Score: " + score;
+            if (score > topScore) {
+              topScore = score;
+              setTopScore(score);
+              updateTopScoreDisplay();
+            }
+          }
+        });
+      });
+
+      if (
+        spacePressed &&
+        bullets.length < 8 &&
+        running &&
+        Date.now() - lastShoot > SHOOT_COOLDOWN
+      ) {
+        bullets.push({
+          x: player.x + player.r + 8,
+          y: player.y,
+          r: 8,
+          speed: 16
+        });
+        lastShoot = Date.now();
+      }
+
+      if (running) {
+        spawnTimer--;
+        if (spawnTimer <= 0) {
+          const tY = Math.random() * (canvas.height - 60) + 30;
+          const tColor = `hsl(${Math.random()*360},80%,60%)`;
+          targets.push({
+            x: canvas.width + 40,
+            y: tY,
+            r: 28,
+            speed: Math.random()*2 + 2.5,
+            color: tColor
+          });
+          spawnTimer = Math.floor(Math.random()*45) + 45;
+        }
+      }
+    }
+
+    function showGameOverAnim() {
+      gameoverEl.style.display = "block";
+      gameoverEl.style.opacity = "0";
+      gameoverEl.classList.remove("gameover-anim");
+      void gameoverEl.offsetWidth;
+      gameoverEl.classList.add("gameover-anim");
+      playBtn.style.display = "inline-block";
+      resetTopBtn.style.display = "inline-block"; // Tampilkan tombol reset saat game over saja
+    }
+
+    function gameLoop() {
+      if (!started) {
+        drawWaitScreen();
+        return;
+      }
+      if (running) {
+        update();
+        draw();
+        requestAnimationFrame(gameLoop);
+      } else {
+        draw();
+      }
+    }
+
+    document.addEventListener('keydown', function(e) {
+      if (!started) return;
+      if (e.code === 'ArrowUp') upPressed = true;
+      if (e.code === 'ArrowDown') downPressed = true;
+      if (e.code === 'Space') spacePressed = true;
+    });
+    document.addEventListener('keyup', function(e) {
+      if (!started) return;
+      if (e.code === 'ArrowUp') upPressed = false;
+      if (e.code === 'ArrowDown') downPressed = false;
+      if (e.code === 'Space') spacePressed = false;
+    });
+
+    playBtn.onclick = function() {
+      started = true;
+      initGame();
+      playBtn.style.display = "none";
+      // ResetTopBtn di-hide di initGame
+      gameLoop();
+    };
+
+    resetTopBtn.onclick = function() {
+      resetTopScore();
+    };
+
+    function centerGameOver() {
+      const rect = canvas.getBoundingClientRect();
+      const containerRect = document.getElementById('gameContainer').getBoundingClientRect();
+      gameoverEl.style.width = rect.width + "px";
+      gameoverEl.style.height = rect.height + "px";
+      gameoverEl.style.left = (rect.left - containerRect.left + rect.width/2) + "px";
+      gameoverEl.style.top = (rect.top - containerRect.top + rect.height/2) + "px";
+      gameoverEl.style.transform = "translate(-50%, -50%)";
+    }
+    window.addEventListener('resize', centerGameOver);
+    window.addEventListener('DOMContentLoaded', centerGameOver);
+
+    started = false;
+    updateTopScoreDisplay();
+    resetTopBtn.style.display = "none"; // default: hidden
+    drawWaitScreen();
+    centerGameOver();
+  </script>
+</body>
+</html>
